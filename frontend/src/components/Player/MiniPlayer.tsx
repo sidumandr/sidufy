@@ -24,7 +24,7 @@ export function MiniPlayer() {
 
   return (
     <div
-      className={`pointer-events-none fixed top-4 right-4 z-50 w-[min(17.5rem,calc(100vw-5.5rem))] transition-all duration-500 ease-out motion-reduce:transition-none ${
+      className={`pointer-events-none transition-all duration-500 ease-out motion-reduce:transition-none ${
         entered
           ? "translate-x-0 translate-y-0 opacity-100"
           : "translate-x-6 -translate-y-2 opacity-0"
@@ -63,7 +63,10 @@ export function MiniPlayer() {
                 {isPlaying ? (
                   <Pause className="h-4 w-4" fill="currentColor" />
                 ) : (
-                  <Play className="h-4 w-4 translate-x-px" fill="currentColor" />
+                  <Play
+                    className="h-4 w-4 translate-x-px"
+                    fill="currentColor"
+                  />
                 )}
               </button>
               <button

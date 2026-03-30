@@ -19,10 +19,10 @@ class DiscoveryView(View):
             return JsonResponse({"tracks": cached, "cached": True})
 
         try:
-            data = fetch_tracks(tags="lofi", limit=20)
+            data = fetch_tracks(tags="lofi,chillout", limit=50)
         except RuntimeError:
             try:
-                data = fetch_tracks(limit=20)
+                data = fetch_tracks(limit=50)
             except RuntimeError as exc:
                 return JsonResponse(
                     {"tracks": [], "error": str(exc)},
@@ -55,7 +55,7 @@ class SearchView(View):
             )
 
         try:
-            data = fetch_tracks(search=query, limit=30)
+            data = fetch_tracks(search=query, limit=50)
         except RuntimeError as exc:
             return JsonResponse(
                 {"tracks": [], "error": str(exc)},

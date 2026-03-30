@@ -1,10 +1,16 @@
-import { Compass, Home, Library, LogIn, LogOut, User } from "lucide-react";
+import { Compass, Heart, Home, Library, LogIn, LogOut, User } from "lucide-react";
 
-export type AppTab = "player" | "explore" | "library" | "profile";
+export type AppTab =
+  | "player"
+  | "explore"
+  | "favorites"
+  | "library"
+  | "profile";
 
 const NAV_ITEMS: { id: AppTab; label: string; icon: typeof Home }[] = [
   { id: "player", label: "Home", icon: Home },
   { id: "explore", label: "Explore", icon: Compass },
+  { id: "favorites", label: "Likes", icon: Heart },
   { id: "library", label: "Library", icon: Library },
   { id: "profile", label: "Profile", icon: User },
 ];

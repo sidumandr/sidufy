@@ -121,10 +121,12 @@ REST_FRAMEWORK = {
 }
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
-    "ROTATE_REFRESH_TOKENS": False,
-    "AUTH_HEADER_TYPES": ("Bearer",),
+    "AUTH_COOKIE": "sidufy_access",
+    "AUTH_COOKIE_HTTP_ONLY": True,
+    "AUTH_COOKIE_SECURE": True,  
+    "AUTH_COOKIE_SAMESITE": "Lax",
 }
 
 CACHES = {
@@ -134,7 +136,7 @@ CACHES = {
     }
 }
 
-DISCOVERY_CACHE_KEY = "jamendo:discovery:lofi"
+DISCOVERY_CACHE_KEY = "jamendo:discovery:lofi-chillout-50"
 DISCOVERY_CACHE_TIMEOUT = 60 * 30
 
-JAMENDO_CLIENT_ID = os.environ.get("JAMENDO_CLIENT_ID", "59855c10")
+JAMENDO_CLIENT_ID = os.environ.get("JAMENDO_CLIENT_ID")

@@ -38,6 +38,7 @@ interface MusicState {
   discoveryTracks: Track[];
   isLoading: boolean;
   searchResults: Track[];
+  searchQuery: string;
   isSearching: boolean;
   profile: UserProfile | null;
   profileUsername: string | null;
@@ -46,6 +47,8 @@ interface MusicState {
   userPlaylists: PlaylistSummary[];
   /** favorites list of Jamendo ids */
   favorites: string[];
+  favoriteTracks: Track[];
+  favoriteTracksLoading: boolean;
   authLoading: boolean;
 
   setCurrentTrack: (track: Track) => void;
@@ -59,6 +62,7 @@ interface MusicState {
   fetchProfile: () => Promise<void>;
   fetchUserPlaylists: () => Promise<void>;
   fetchFavorites: () => Promise<void>;
+  fetchFavoriteTracks: () => Promise<void>;
   toggleFavorite: (track: Track) => Promise<boolean>;
   createPlaylist: (name: string) => Promise<boolean>;
   deletePlaylist: (playlistId: number) => Promise<boolean>;
@@ -77,8 +81,10 @@ interface MusicState {
   ) => Promise<boolean>;
 }
 
-const CLIENT_ID = import.meta.env.VITE_JAMENDO_CLIENT_ID;
+const CLIENT_ID = import.meta.env.VITE_JAMENDO_CLIENT_ID as string;
 const JAMENDO_BASE_URL = "https://api.jamendo.com/v3.0/tracks/";
+const DISCOVERY_TAGS = "lofi,chillout";
+const JAMENDO_FETCH_LIMIT = "50";
 
 const FALLBACK_TRACKS: Track[] = [
   {
@@ -99,6 +105,68 @@ const FALLBACK_TRACKS: Track[] = [
   },
 ];
 
+function mapJamendoResults(
+  results: Array<{
+    id: string | number;
+    name: string;
+    artist_name: string;
+    album_image?: string;
+    audio: string;
+    duration: number;
+  }>,
+): Track[] {
+  return results.map((item) => ({
+    id: String(item.id),
+    title: item.name,
+    artist: item.artist_name,
+    cover:
+      item.album_image ||
+      "https://images.unsplash.com/photo-1516280440614-37939bbacd81?q=80&w=500",
+    audioUrl: item.audio,
+    duration: item.duration,
+  }));
+}
+
+async function fetchJamendoTracksByIds(ids: string[]): Promise<Track[]> {
+  const uniq = [...new Set(ids.map((id) => String(id).trim()).filter(Boolean))];
+  if (uniq.length === 0 || !CLIENT_ID) return [];
+
+  const chunks: string[][] = [];
+  for (let i = 0; i < uniq.length; i += 50) {
+    chunks.push(uniq.slice(i, i + 50));
+  }
+
+  const byId = new Map<string, Track>();
+
+  for (const chunk of chunks) {
+    const params = new URLSearchParams({
+      client_id: CLIENT_ID,
+      format: "json",
+      include: "musicinfo",
+      audioformat: "mp32",
+      id: chunk.join("+"),
+    });
+    const response = await fetch(`${JAMENDO_BASE_URL}?${params.toString()}`);
+    if (!response.ok) continue;
+    const data = (await response.json()) as {
+      headers?: { status?: string };
+      results?: Array<{
+        id: string | number;
+        name: string;
+        artist_name: string;
+        album_image?: string;
+        audio: string;
+        duration: number;
+      }>;
+    };
+    if (data?.headers?.status !== "success") continue;
+    const mapped = mapJamendoResults(data?.results ?? []);
+    for (const t of mapped) byId.set(t.id, t);
+  }
+
+  return uniq.map((id) => byId.get(id)).filter((t): t is Track => Boolean(t));
+}
+
 function parseDetail(data: unknown): string {
   if (data && typeof data === "object" && "detail" in data) {
     const d = (data as { detail: unknown }).detail;
@@ -113,7 +181,7 @@ async function fetchJamendoDirect(tags?: string): Promise<Track[]> {
     const params = new URLSearchParams({
       client_id: CLIENT_ID,
       format: "json",
-      limit: "20",
+      limit: JAMENDO_FETCH_LIMIT,
       include: "musicinfo",
       audioformat: "mp32",
       order: "popularity_total",
@@ -138,25 +206,16 @@ async function fetchJamendoDirect(tags?: string): Promise<Track[]> {
     results = await requestTracks();
   }
 
-  return (
+  return mapJamendoResults(
     results as Array<{
-      id: string;
+      id: string | number;
       name: string;
       artist_name: string;
       album_image?: string;
       audio: string;
       duration: number;
-    }>
-  ).map((item) => ({
-    id: item.id,
-    title: item.name,
-    artist: item.artist_name,
-    cover:
-      item.album_image ||
-      "https://images.unsplash.com/photo-1516280440614-37939bbacd81?q=80&w=500",
-    audioUrl: item.audio,
-    duration: item.duration,
-  }));
+    }>,
+  );
 }
 
 export const useMusicStore = create<MusicState>((set, get) => ({
@@ -167,12 +226,15 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   discoveryTracks: [],
   isLoading: false,
   searchResults: [],
+  searchQuery: "",
   isSearching: false,
   profile: null,
   profileUsername: null,
   isAuthenticated: false,
   userPlaylists: [],
   favorites: [],
+  favoriteTracks: [],
+  favoriteTracksLoading: false,
   authLoading: false,
 
   fetchTracks: async () => {
@@ -197,7 +259,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
         }
       }
 
-      const mappedTracks = await fetchJamendoDirect("lofi");
+      const mappedTracks = await fetchJamendoDirect(DISCOVERY_TAGS);
       if (mappedTracks.length === 0) {
         set({
           queue: FALLBACK_TRACKS,
@@ -228,11 +290,11 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   searchTracks: async (query: string) => {
     const q = query.trim();
     if (!q) {
-      set({ searchResults: [], isSearching: false });
+      set({ searchResults: [], searchQuery: "", isSearching: false });
       return [];
     }
 
-    set({ isSearching: true });
+    set({ isSearching: true, searchQuery: q });
     const searchPath = `/search/?q=${encodeURIComponent(q)}`;
 
     try {
@@ -249,7 +311,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       const params = new URLSearchParams({
         client_id: CLIENT_ID,
         format: "json",
-        limit: "30",
+        limit: "50",
         include: "musicinfo",
         audioformat: "mp32",
         order: "popularity_total",
@@ -262,25 +324,16 @@ export const useMusicStore = create<MusicState>((set, get) => ({
         throw new Error("Jamendo status not success");
       }
       const results = data?.results ?? [];
-      const tracks = (
+      const tracks = mapJamendoResults(
         results as Array<{
-          id: string;
+          id: string | number;
           name: string;
           artist_name: string;
           album_image?: string;
           audio: string;
           duration: number;
-        }>
-      ).map((item) => ({
-        id: item.id,
-        title: item.name,
-        artist: item.artist_name,
-        cover:
-          item.album_image ||
-          "https://images.unsplash.com/photo-1516280440614-37939bbacd81?q=80&w=500",
-        audioUrl: item.audio,
-        duration: item.duration,
-      }));
+        }>,
+      );
       set({ searchResults: tracks, isSearching: false });
       return tracks;
     } catch (error) {
@@ -303,6 +356,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
           profileUsername: null,
           userPlaylists: [],
           favorites: [],
+          favoriteTracks: [],
         });
         return;
       }
@@ -358,6 +412,26 @@ export const useMusicStore = create<MusicState>((set, get) => ({
     }
   },
 
+  fetchFavoriteTracks: async () => {
+    if (!get().isAuthenticated) {
+      set({ favoriteTracks: [], favoriteTracksLoading: false });
+      return;
+    }
+    set({ favoriteTracksLoading: true });
+    const ids = get().favorites;
+    if (ids.length === 0) {
+      set({ favoriteTracks: [], favoriteTracksLoading: false });
+      return;
+    }
+    try {
+      const tracks = await fetchJamendoTracksByIds(ids);
+      set({ favoriteTracks: tracks, favoriteTracksLoading: false });
+    } catch (error) {
+      console.error("fetchFavoriteTracks:", error);
+      set({ favoriteTracks: [], favoriteTracksLoading: false });
+    }
+  },
+
   toggleFavorite: async (track: Track) => {
     if (!get().isAuthenticated) return false;
     const path = "/me/favorites/toggle/";
@@ -388,7 +462,15 @@ export const useMusicStore = create<MusicState>((set, get) => ({
         const setFav = new Set(state.favorites);
         if (data.in_favorites) setFav.add(jid);
         else setFav.delete(jid);
-        return { favorites: Array.from(setFav) };
+        const nextFav = Array.from(setFav);
+        const prevTracks = state.favoriteTracks;
+        let nextTracks = prevTracks;
+        if (!data.in_favorites) {
+          nextTracks = prevTracks.filter((t) => t.id !== jid);
+        } else if (!prevTracks.some((t) => t.id === jid)) {
+          nextTracks = [...prevTracks, track];
+        }
+        return { favorites: nextFav, favoriteTracks: nextTracks };
       });
       return true;
     } catch (error) {
@@ -452,7 +534,6 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       if (!tokens.access || !tokens.refresh) {
         throw new Error("Sunucu token döndürmedi.");
       }
-      setTokens(tokens.access, tokens.refresh);
       await get().fetchProfile();
       await get().fetchUserPlaylists();
       await get().fetchFavorites();
@@ -503,6 +584,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       profileUsername: null,
       userPlaylists: [],
       favorites: [],
+      favoriteTracks: [],
     });
   },
 
@@ -604,7 +686,6 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   },
 }));
 
-/** Dışarıdan (ör. bootstrap) API tabanı var mı kontrolü */
 export function hasApiBase(): boolean {
   return Boolean(normalizeApiBase());
 }
