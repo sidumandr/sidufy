@@ -119,6 +119,10 @@ CORS_ALLOWED_ORIGINS = [
     if o.strip()
 ]
 
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://sidufy.*\.vercel\.app$",
+]
+
 CORS_ALLOW_CREDENTIALS = True
 
 REST_FRAMEWORK = {
